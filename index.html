@@ -1,0 +1,353 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Track – Scooters</title>
+<style>
+  :root{--bg:#0f1220;--panel:#181c30;--ink:#eef1ff;--mute:#8d94b8;--acc:#22d3a6;--warn:#ff5d73;--gold:#ffc83d}
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font:16px system-ui,sans-serif;overflow:hidden}
+  #app{display:flex;flex-direction:column;height:100%;max-width:560px;margin:auto}
+  header{display:flex;justify-content:space-between;align-items:center;padding:10px 14px}
+  header h1{margin:0;font-size:22px;letter-spacing:2px}
+  header h1 b{color:var(--acc)}
+  #bal{background:var(--panel);padding:6px 12px;border-radius:20px;font-weight:700}
+  main{flex:1;position:relative;min-height:0}
+  .view{position:absolute;inset:0;display:none;flex-direction:column;padding:0 14px 8px;overflow:auto}
+  .view.on{display:flex}
+  canvas{width:100%;background:#0b0e1a;border-radius:14px;touch-action:none;display:block}
+  nav{display:flex;background:var(--panel)}
+  nav button{flex:1;padding:14px 0;background:none;border:0;color:var(--mute);font-weight:700;font-size:14px}
+  nav button.on{color:var(--acc);box-shadow:inset 0 3px 0 var(--acc)}
+  .card{background:var(--panel);border-radius:14px;padding:14px;margin-top:10px}
+  .btn{background:var(--acc);color:#04251d;border:0;border-radius:12px;padding:12px 16px;font-weight:800;font-size:15px;width:100%;margin-top:8px}
+  .btn.red{background:var(--warn);color:#fff}.btn.alt{background:#2a3050;color:var(--ink)}
+  .btn:disabled{opacity:.4}
+  .row{display:flex;justify-content:space-between;align-items:center;gap:8px}
+  .mute{color:var(--mute);font-size:13px}
+  .big{font-size:34px;font-weight:800}
+  input{width:100%;padding:11px;margin-top:6px;border-radius:10px;border:1px solid #2f3659;background:#0f1220;color:var(--ink);font-size:15px}
+  .hist{padding:8px 0;border-bottom:1px solid #262c4a}
+  #toast{position:fixed;top:12px;left:50%;transform:translateX(-50%);background:#000c;padding:10px 16px;border-radius:12px;opacity:0;transition:.3s;pointer-events:none;z-index:9;max-width:90%}
+  #toast.on{opacity:1}
+  .hud{display:flex;gap:8px;margin-top:8px}.hud .card{flex:1;margin:0;text-align:center;padding:8px}
+  .hud b{font-size:20px;display:block}
+</style>
+</head>
+<body>
+<div id="app">
+  <header><h1>TR<b>A</b>CK</h1><div id="bal">$0.00</div></header>
+  <main>
+    <section class="view on" id="v-map">
+      <canvas id="map" width="520" height="520"></canvas>
+      <div class="card" id="mapPanel"><div class="mute">Tap a scooter on the map to see details. Green = available.</div></div>
+    </section>
+
+    <section class="view" id="v-ride">
+      <div id="noRide" class="card"><b>No active ride.</b><div class="mute">Pick a scooter on the Map tab and unlock it. Then play the runner while you ride: coins you collect turn into free minutes!</div></div>
+      <div id="rideBox" style="display:none">
+        <div class="hud">
+          <div class="card"><span class="mute">Time</span><b id="hTime">0:00</b></div>
+          <div class="card"><span class="mute">Cost</span><b id="hCost">$0.00</b></div>
+          <div class="card"><span class="mute">Coins</span><b id="hCoins">0</b></div>
+          <div class="card"><span class="mute">Free min</span><b id="hFree">0</b></div>
+        </div>
+        <canvas id="game" width="360" height="480" style="margin-top:10px;max-height:52vh;width:auto;max-width:100%;margin-left:auto;margin-right:auto"></canvas>
+        <div class="mute" style="text-align:center;margin-top:6px">← → change lane · ↑ jump · swipe on phone · 25 coins = 1 free minute</div>
+        <button class="btn red" id="endBtn">Lock scooter &amp; end ride</button>
+      </div>
+    </section>
+
+    <section class="view" id="v-wallet">
+      <div class="card"><div class="mute">Balance</div><div class="big" id="wBal">$0.00</div>
+        <div class="mute">Rate: $0.35 per minute (billed per started minute)</div></div>
+      <div class="card"><b>Payment card</b>
+        <input id="cardNum" placeholder="Card number" inputmode="numeric" maxlength="19">
+        <div class="row"><input id="cardExp" placeholder="MM/YY" maxlength="5"><input id="cardCvc" placeholder="CVC" maxlength="4" inputmode="numeric"></div>
+        <button class="btn alt" id="saveCard">Save card</button>
+        <div class="mute" id="cardInfo"></div></div>
+      <div class="card"><b>Add funds</b>
+        <div class="row"><button class="btn" data-add="5">+$5</button><button class="btn" data-add="10">+$10</button><button class="btn" data-add="20">+$20</button></div>
+        <div class="mute" style="margin-top:6px">Demo mode: no real money moves. See README to connect a payment processor.</div></div>
+    </section>
+
+    <section class="view" id="v-hist"><div class="card"><b>Ride history</b><div id="histList" class="mute">No rides yet.</div></div></section>
+  </main>
+  <nav>
+    <button data-v="map" class="on">Map</button><button data-v="ride">Ride</button>
+    <button data-v="wallet">Wallet</button><button data-v="hist">History</button>
+  </nav>
+</div>
+<div id="toast"></div>
+
+<script>
+"use strict";
+/* ---------- config ---------- */
+const RATE = 0.35;                 // dollars per started minute
+const COINS_PER_FREE_MIN = 25;
+const SPEED = Math.max(1, +new URLSearchParams(location.search).get("speed") || 1); // test: ?speed=60 makes time run faster
+const GRID = 6, CELL = 520 / GRID;  // city blocks
+
+/* ---------- persistence ---------- */
+const KEY = "track.v1";
+const defaults = () => ({ balance: 5, card: null, history: [], ride: null, scooters: null });
+let S;
+try { S = Object.assign(defaults(), JSON.parse(localStorage.getItem(KEY) || "{}")); } catch { S = defaults(); }
+const save = () => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch {} };
+
+if (!S.scooters) {
+  S.scooters = Array.from({ length: 10 }, (_, i) => ({
+    id: "SC-" + (100 + i),
+    gx: Math.floor(Math.random() * (GRID + 1)), gy: Math.floor(Math.random() * (GRID + 1)), // on street intersections
+    ox: 0, oy: 0, battery: 40 + Math.floor(Math.random() * 60), inUse: false
+  }));
+}
+// scooter positions in px
+S.scooters.forEach(s => { if (s.x == null) { s.x = s.gx * CELL; s.y = s.gy * CELL; } });
+
+/* ---------- helpers ---------- */
+const $ = id => document.getElementById(id);
+const money = n => "$" + n.toFixed(2);
+const fmtT = s => Math.floor(s / 60) + ":" + String(Math.floor(s % 60)).padStart(2, "0");
+function toast(m) { const t = $("toast"); t.textContent = m; t.classList.add("on"); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove("on"), 2200); }
+function show(v) {
+  document.querySelectorAll(".view").forEach(e => e.classList.toggle("on", e.id === "v-" + v));
+  document.querySelectorAll("nav button").forEach(b => b.classList.toggle("on", b.dataset.v === v));
+  if (v === "hist") renderHist();
+}
+document.querySelectorAll("nav button").forEach(b => b.onclick = () => show(b.dataset.v));
+
+/* ---------- wallet ---------- */
+function renderWallet() {
+  $("bal").textContent = $("wBal").textContent = money(S.balance);
+  $("cardInfo").textContent = S.card ? "Saved card ••••" + S.card.last4 : "No card saved. Add one to top up.";
+}
+$("saveCard").onclick = () => {
+  const num = $("cardNum").value.replace(/\s/g, ""), exp = $("cardExp").value, cvc = $("cardCvc").value;
+  if (!luhn(num)) return toast("Invalid card number");
+  if (!/^(0[1-9]|1[0-2])\/\d\d$/.test(exp)) return toast("Expiry must be MM/YY");
+  if (!/^\d{3,4}$/.test(cvc)) return toast("Invalid CVC");
+  S.card = { last4: num.slice(-4) };      // never store the full number
+  $("cardNum").value = $("cardExp").value = $("cardCvc").value = "";
+  save(); renderWallet(); toast("Card saved");
+};
+function luhn(n) {
+  if (!/^\d{12,19}$/.test(n)) return false;
+  let sum = 0, alt = false;
+  for (let i = n.length - 1; i >= 0; i--) { let d = +n[i]; if (alt) { d *= 2; if (d > 9) d -= 9; } sum += d; alt = !alt; }
+  return sum % 10 === 0;
+}
+document.querySelectorAll("[data-add]").forEach(b => b.onclick = () => {
+  if (!S.card) return toast("Save a card first");
+  S.balance = Math.round((S.balance + +b.dataset.add) * 100) / 100;
+  save(); renderWallet(); toast("Added " + money(+b.dataset.add));
+});
+
+/* ---------- history ---------- */
+function renderHist() {
+  $("histList").innerHTML = S.history.length ? S.history.slice().reverse().map(h =>
+    `<div class="hist"><div class="row"><b>${h.id}</b><b>${money(h.cost)}</b></div>
+     <div class="mute">${new Date(h.at).toLocaleString()} · ${fmtT(h.secs)} · ${h.coins} coins · ${h.free} free min</div></div>`).join("") : "No rides yet.";
+}
+
+/* ---------- map & tracking ---------- */
+const mapC = $("map"), mx = mapC.getContext("2d");
+let selected = null;
+mapC.addEventListener("pointerdown", e => {
+  const r = mapC.getBoundingClientRect(), k = 520 / r.width;
+  const px = (e.clientX - r.left) * k, py = (e.clientY - r.top) * k;
+  let best = null, bd = 28;
+  for (const s of S.scooters) { const d = Math.hypot(s.x - px, s.y - py); if (d < bd) { bd = d; best = s; } }
+  selected = best ? best.id : null; renderPanel();
+});
+function renderPanel() {
+  const p = $("mapPanel"), s = S.scooters.find(x => x.id === selected);
+  if (!s) { p.innerHTML = '<div class="mute">Tap a scooter on the map to see details. Green = available.</div>'; return; }
+  const mine = S.ride && S.ride.id === s.id;
+  p.innerHTML = `<div class="row"><b>${s.id}</b><span>🔋 ${Math.round(s.battery)}%</span></div>
+    <div class="mute">${mine ? "Your active ride" : s.inUse ? "In use by someone else" : s.battery < 15 ? "Battery too low" : "Available · " + money(RATE) + "/min"}</div>
+    ${mine ? "" : `<button class="btn" id="unlock" ${s.inUse || S.ride || s.battery < 15 ? "disabled" : ""}>Unlock</button>`}`;
+  const u = $("unlock"); if (u) u.onclick = () => startRide(s);
+}
+function drawMap(t) {
+  mx.clearRect(0, 0, 520, 520);
+  mx.fillStyle = "#0b0e1a"; mx.fillRect(0, 0, 520, 520);
+  mx.strokeStyle = "#252b4a"; mx.lineWidth = 8;
+  for (let i = 0; i <= GRID; i++) { mx.beginPath(); mx.moveTo(i * CELL, 0); mx.lineTo(i * CELL, 520); mx.moveTo(0, i * CELL); mx.lineTo(520, i * CELL); mx.stroke(); }
+  mx.fillStyle = "#141934";
+  for (let i = 0; i < GRID; i++) for (let j = 0; j < GRID; j++) mx.fillRect(i * CELL + 10, j * CELL + 10, CELL - 20, CELL - 20);
+  for (const s of S.scooters) {
+    const mine = S.ride && S.ride.id === s.id;
+    const sel = s.id === selected;
+    mx.beginPath(); mx.arc(s.x, s.y, mine ? 11 : 9, 0, 7);
+    mx.fillStyle = mine ? "#ffc83d" : s.inUse ? "#ff5d73" : s.battery < 15 ? "#8d94b8" : "#22d3a6"; mx.fill();
+    if (sel || mine) { mx.strokeStyle = "#fff"; mx.lineWidth = 2; mx.beginPath(); mx.arc(s.x, s.y, 16 + Math.sin(t / 200) * 2, 0, 7); mx.stroke(); }
+    mx.fillStyle = "#fff"; mx.font = "10px sans-serif"; mx.textAlign = "center"; mx.fillText(s.id.slice(3), s.x, s.y + 3.5);
+  }
+}
+// scooter movement along streets (own ride + other riders)
+function stepScooter(s, dt, speed) {
+  if (!s.dir || (Math.abs(s.x - s.tx) < 1 && Math.abs(s.y - s.ty) < 1)) {
+    s.x = s.tx ?? s.x; s.y = s.ty ?? s.y;
+    const gx = Math.round(s.x / CELL), gy = Math.round(s.y / CELL);
+    const opts = [[1, 0], [-1, 0], [0, 1], [0, -1]].filter(([dx, dy]) => gx + dx >= 0 && gx + dx <= GRID && gy + dy >= 0 && gy + dy <= GRID);
+    const same = opts.filter(o => s.dir && o[0] === s.dir[0] && o[1] === s.dir[1]);
+    const pick = (same.length && Math.random() < .6) ? same[0] : opts[Math.floor(Math.random() * opts.length)];
+    s.dir = pick; s.tx = (gx + pick[0]) * CELL; s.ty = (gy + pick[1]) * CELL;
+  }
+  const d = Math.min(speed * dt, Math.hypot(s.tx - s.x, s.ty - s.y));
+  s.x += s.dir[0] * d; s.y += s.dir[1] * d;
+}
+// simulated "other riders" so the map feels alive
+setInterval(() => {
+  const free = S.scooters.filter(s => !s.inUse && !(S.ride && S.ride.id === s.id));
+  if (free.length > 4 && Math.random() < .5) free[Math.floor(Math.random() * free.length)].inUse = true;
+  else { const u = S.scooters.filter(s => s.inUse && !(S.ride && S.ride.id === s.id)); if (u.length) u[Math.floor(Math.random() * u.length)].inUse = false; }
+  if (!ridePanelLock()) renderPanel();
+}, 6000);
+const ridePanelLock = () => false;
+
+/* ---------- ride & billing ---------- */
+let tick = null;
+function startRide(s) {
+  if (S.ride) return;
+  if (S.balance < RATE) { toast("Add funds first (need " + money(RATE) + ")"); return show("wallet"); }
+  s.inUse = true; s.dir = null;
+  S.ride = { id: s.id, start: Date.now(), minutesBilled: 0, coins: 0, free: 0, freeUsed: 0, cost: 0 };
+  chargeMinute();   // first minute is billed at unlock
+  save(); resumeRide(); show("ride"); toast("Unlocked " + s.id + " – ride safe!");
+}
+function chargeMinute() {
+  const r = S.ride;
+  if (r.free - r.freeUsed > 0) { r.freeUsed++; }
+  else if (S.balance + 1e-9 >= RATE) { S.balance = Math.round((S.balance - RATE) * 100) / 100; r.cost = Math.round((r.cost + RATE) * 100) / 100; }
+  else return false;
+  r.minutesBilled++; return true;
+}
+function elapsed() { return (Date.now() - S.ride.start) / 1000 * SPEED; }
+function resumeRide() {
+  $("noRide").style.display = "none"; $("rideBox").style.display = "block";
+  clearInterval(tick);
+  tick = setInterval(() => {
+    if (!S.ride) return;
+    // bill each new started minute
+    while (S.ride.minutesBilled * 60 <= elapsed()) {
+      if (!chargeMinute()) { toast("Out of funds – scooter locked"); return endRide(); }
+    }
+    const s = S.scooters.find(x => x.id === S.ride.id); if (s) s.battery = Math.max(0, s.battery - 0.01 * SPEED);
+    hud();
+  }, 500);
+  hud(); save(); resetGame();
+}
+function hud() {
+  const r = S.ride; if (!r) return;
+  $("hTime").textContent = fmtT(elapsed()); $("hCost").textContent = money(r.cost);
+  $("hCoins").textContent = r.coins; $("hFree").textContent = r.free - r.freeUsed; renderWallet();
+}
+function endRide() {
+  const r = S.ride; if (!r) return;
+  const secs = Math.floor(elapsed());
+  S.history.push({ id: r.id, at: Date.now(), secs, cost: r.cost, coins: r.coins, free: r.freeUsed });
+  const s = S.scooters.find(x => x.id === r.id); if (s) { s.inUse = false; s.dir = null; }
+  S.ride = null; clearInterval(tick); save();
+  $("noRide").style.display = "block"; $("rideBox").style.display = "none";
+  renderWallet(); renderPanel();
+  toast(`Ride over: ${fmtT(secs)} · charged ${money(r.cost)}`); show("hist");
+}
+$("endBtn").onclick = endRide;
+
+/* ---------- endless runner (Subway-Surfers style) ---------- */
+const gc = $("game"), g = gc.getContext("2d"), GW = 360, GH = 480, HOR = 120;
+let G;
+function resetGame() { G = { lane: 0, tx: 0, px: 0, jump: 0, vy: 0, objs: [], t: 0, spawn: 0, speed: .55, hit: 0, last: performance.now(), scroll: 0 }; }
+resetGame();
+function sx(lane, p) { return GW / 2 + lane * 100 * p; }
+function sy(p) { return HOR + (GH - 60 - HOR) * p; }
+const key = e => {
+  if (!S.ride || !$("v-ride").classList.contains("on")) return;
+  if (e.key === "ArrowLeft") G.lane = Math.max(-1, G.lane - 1);
+  else if (e.key === "ArrowRight") G.lane = Math.min(1, G.lane + 1);
+  else if (e.key === "ArrowUp" || e.key === " ") { if (G.jump === 0) G.vy = 5.2; }
+  else return; e.preventDefault();
+};
+addEventListener("keydown", key);
+let sw = null;
+gc.addEventListener("pointerdown", e => sw = [e.clientX, e.clientY]);
+gc.addEventListener("pointerup", e => {
+  if (!sw) return; const dx = e.clientX - sw[0], dy = e.clientY - sw[1]; sw = null;
+  if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 20) G.lane = Math.max(-1, Math.min(1, G.lane + Math.sign(dx)));
+  else if (dy < -20 && G.jump === 0) G.vy = 5.2;
+});
+function updateGame(dt) {
+  G.t += dt; G.speed = Math.min(1.2, .55 + G.t * .01);
+  G.px += (G.lane - G.px) * Math.min(1, dt * 14);
+  if (G.vy || G.jump) { G.jump += G.vy * dt * 60 * .55; G.vy -= 14 * dt; if (G.jump <= 0) { G.jump = 0; G.vy = 0; } }
+  G.scroll = (G.scroll + G.speed * dt * 3) % 1;
+  G.spawn -= dt;
+  if (G.spawn <= 0) {
+    G.spawn = .9 / G.speed * (.6 + Math.random() * .6);
+    const lane = Math.floor(Math.random() * 3) - 1, r = Math.random();
+    if (r < .55) { for (let i = 0; i < 4; i++) G.objs.push({ k: "coin", lane, p: 0.02 - i * .07 }); }
+    else G.objs.push({ k: r < .8 ? "low" : "wall", lane, p: .02 });
+  }
+  for (const o of G.objs) {
+    o.p += G.speed * dt * .55 * (1 + o.p * 1.2);
+    if (o.done || o.p < .8 || o.p > .95) continue;
+    if (Math.abs(o.lane - G.px) > .55) continue;
+    if (o.k === "coin") { o.done = true; S.ride.coins++; if (S.ride.coins % COINS_PER_FREE_MIN === 0) { S.ride.free++; toast("🎉 Free minute earned!"); } save(); }
+    else if (o.k === "low" && G.jump > 1.2) continue;
+    else { o.done = true; G.hit = .5; G.t = Math.max(0, G.t - 20); if (navigator.vibrate) navigator.vibrate(120); }
+  }
+  G.objs = G.objs.filter(o => !o.done && o.p < 1.1);
+  if (G.hit > 0) G.hit -= dt;
+}
+function drawGame() {
+  g.clearRect(0, 0, GW, GH);
+  const sky = g.createLinearGradient(0, 0, 0, HOR); sky.addColorStop(0, "#2b1a5e"); sky.addColorStop(1, "#ff7a8a");
+  g.fillStyle = sky; g.fillRect(0, 0, GW, HOR);
+  g.fillStyle = "#1a1f3d"; for (let i = 0; i < 9; i++) g.fillRect(i * 42, HOR - 30 - (i * 37 % 50), 34, 80);
+  g.fillStyle = "#222846"; g.fillRect(0, HOR, GW, GH - HOR);
+  g.fillStyle = "#3a4170";
+  g.beginPath(); g.moveTo(GW / 2 - 15, HOR); g.lineTo(GW / 2 + 15, HOR); g.lineTo(GW / 2 + 190, GH); g.lineTo(GW / 2 - 190, GH); g.fill();
+  g.strokeStyle = "#ffffff55"; g.lineWidth = 2;
+  for (let i = 0; i < 10; i++) { const p = ((i + G.scroll) / 10) ** 2, p2 = (((i + G.scroll) + .5) / 10) ** 2;
+    for (const l of [-.5, .5]) { g.beginPath(); g.moveTo(sx(l, p), sy(p)); g.lineTo(sx(l, p2), sy(p2)); g.stroke(); } }
+  const objs = G.objs.slice().sort((a, b) => a.p - b.p);
+  for (const o of objs) {
+    if (o.p < 0) continue; const p = o.p, x = sx(o.lane, p), y = sy(p), s = 8 + 70 * p;
+    if (o.k === "coin") { g.fillStyle = "#ffc83d"; g.beginPath(); g.arc(x, y - s * .5, s * .22, 0, 7); g.fill(); g.strokeStyle = "#b38600"; g.stroke(); }
+    else if (o.k === "low") { g.fillStyle = "#ff5d73"; g.fillRect(x - s * .5, y - s * .3, s, s * .3); }
+    else { g.fillStyle = "#ff9f43"; g.fillRect(x - s * .45, y - s * 1.0, s * .9, s * 1.0); g.fillStyle = "#000"; g.fillRect(x - s * .45, y - s * .6, s * .9, s * .1); }
+  }
+  // player on scooter
+  const px = sx(G.px, .92), py = sy(.92) - G.jump * 14;
+  g.fillStyle = "#0006"; g.beginPath(); g.ellipse(px, sy(.92) + 4, 24, 6, 0, 0, 7); g.fill();
+  g.fillStyle = G.hit > 0 && Math.floor(G.hit * 20) % 2 ? "#fff" : "#22d3a6";
+  g.fillRect(px - 20, py - 8, 40, 8);          // deck
+  g.fillRect(px - 2, py - 52, 4, 46);          // stem
+  g.fillRect(px - 14, py - 54, 28, 4);         // handlebar
+  g.fillStyle = "#eef1ff"; g.fillRect(px - 9, py - 48, 18, 26);   // rider body
+  g.beginPath(); g.arc(px, py - 58, 8, 0, 7); g.fill();            // head
+  g.fillStyle = "#000"; g.beginPath(); g.arc(px - 15, py + 2, 5, 0, 7); g.arc(px + 15, py + 2, 5, 0, 7); g.fill();
+  g.fillStyle = "#fff"; g.font = "bold 14px sans-serif"; g.textAlign = "left";
+  g.fillText("Speed " + Math.round(G.speed * 25) + " km/h", 10, 20);
+}
+
+/* ---------- main loop ---------- */
+function loop(t) {
+  const dt = Math.min(.05, (t - (loop.l || t)) / 1000); loop.l = t;
+  if ($("v-map").classList.contains("on")) {
+    for (const s of S.scooters) if (s.inUse) stepScooter(s, dt, S.ride && S.ride.id === s.id ? 70 : 40);
+    drawMap(t);
+  }
+  if (S.ride && $("v-ride").classList.contains("on")) { updateGame(dt); drawGame(); }
+  requestAnimationFrame(loop);
+}
+// scooters mid-ride from a previous session get moved to a valid state
+renderWallet(); renderPanel();
+if (S.ride) { S.scooters.find(s => s.id === S.ride.id).inUse = true; resumeRide(); toast("Ride resumed"); }
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
